@@ -29,7 +29,7 @@ instance Applicative Parser where
       return (rest2, f x)
 
 jsonNull :: Parser JsonValue
-jsonNull = undefined
+jsonNull = (\_ -> JsonNull) <$> stringP "null"
 
 charP :: Char -> Parser Char
 charP x = Parser f
