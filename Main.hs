@@ -1,9 +1,13 @@
 module Main where
 
+import Control.Applicative
+import Data.Char
+import Text.XHtml (input)
+
 data JsonValue
   = JsonNull
   | JsonBool Bool
-  | JsonNumer Integer -- NOTE: no support for floating point numbers
+  | JsonNumber Integer -- NOTE: no support for floating point numbers
   | JsonString String
   | JsonArray [JsonValue]
   | JsonObject [(String, JsonValue)]
@@ -28,8 +32,68 @@ instance Applicative Parser where
       (rest2, x) <- p2 rest1
       return (rest2, f x)
 
+instance Alternative Parser where
+  empty = Parser $ const Nothing
+  (Parser p1) <|> (Parser p2) =
+    Parser $ \input -> p1 input <|> p2 input
+
+jsonBool :: Parser JsonValue
+jsonBool = JsonBool True <$ stringP "true" <|> JsonBool False <$ stringP "false"
+
 jsonNull :: Parser JsonValue
-jsonNull = (\_ -> JsonNull) <$> stringP "null"
+jsonNull = JsonNull <$ stringP "null"
+
+jsonNumber :: Parser JsonValue
+jsonNumber = JsonNumber . read <$> notNull (spanP isDigit)
+
+ws :: Parser String
+ws = spanP isSpace
+
+sepBy :: Parser a -> Parser b -> Parser [b]
+sepBy sep element = (:) <$> element <*> many (sep *> element) <|> pure []
+
+jsonArray :: Parser JsonValue
+jsonArray = JsonArray <$> (charP '[' *> ws *> elements <* ws <* charP ']')
+  where
+    elements = sepBy sep jsonValue
+    sep = ws *> charP ',' <* ws
+
+jsonObject :: Parser JsonValue
+jsonObject = JsonObject <$> (charP '{' *> ws *> pairs <* ws <* charP '}')
+  where
+    pairs :: Parser [(String, JsonValue)]
+    pairs = sepBy (ws *> charP ',' <* ws) pair
+    pair :: Parser (String, JsonValue)
+    pair = Parser $ \input -> do
+      (rest, s) <- runParser stringLiteral input
+      (rest', _) <- runParser (ws *> charP ':' <* ws) rest
+      (rest'', jv) <- runParser jsonValue rest'
+      return (rest'', (s, jv))
+
+--  NOTE: Pair can also be implemented as:
+--    pair =
+--      (\key _ value -> (key, value)) <$> stringLiteral
+--        <*> (ws *> charP ':' <* ws)
+--        <*> jsonValue
+
+notNull :: Parser [a] -> Parser [a]
+notNull (Parser p) = Parser $ \input -> do
+  (rest, x) <- p input
+  if null x
+    then Nothing
+    else Just (rest, x)
+
+spanP :: (Char -> Bool) -> Parser String
+spanP f = Parser $ \input ->
+  let (x, rest) = span f input
+   in Just (rest, x)
+
+stringLiteral :: Parser String
+stringLiteral = charP '"' *> spanP (/= '"') <* charP '"'
+
+-- NOTE: no escape support
+jsonString :: Parser JsonValue
+jsonString = JsonString <$> stringLiteral
 
 charP :: Char -> Parser Char
 charP x = Parser f
@@ -40,10 +104,10 @@ charP x = Parser f
     f [] = Nothing
 
 stringP :: String -> Parser String
-stringP = sequenceA . map charP
+stringP = traverse charP -- same as sequenceA . map charP
 
 jsonValue :: Parser JsonValue
-jsonValue = undefined
+jsonValue = ws *> (jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray <|> jsonObject) <* ws
 
 main :: IO ()
 main = undefined
