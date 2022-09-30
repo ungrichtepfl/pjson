@@ -1,8 +1,11 @@
+{-# OPTIONS_GHC -Wall -O2 #-}
+
 module Main where
 
 import Control.Applicative
 import Data.Char
-import Text.XHtml (input)
+import System.Environment
+import System.Exit
 
 data JsonValue
   = JsonNull
@@ -109,5 +112,25 @@ stringP = traverse charP -- same as sequenceA . map charP
 jsonValue :: Parser JsonValue
 jsonValue = ws *> (jsonNull <|> jsonBool <|> jsonNumber <|> jsonString <|> jsonArray <|> jsonObject) <* ws
 
+parseFile :: Parser a -> FilePath -> IO (Maybe a)
+parseFile p fp = do
+  content <- readFile fp
+  return $ snd <$> runParser p content
+
+parseJsonFile :: FilePath -> IO (Maybe JsonValue)
+parseJsonFile = parseFile jsonValue
+
 main :: IO ()
-main = undefined
+main = getArgs >>= parse >>= parseJsonFile >>= print
+
+parse :: [String] -> IO String
+parse ["-h"] = usage >> exitSuccess
+parse ["-v"] = version >> exitSuccess
+parse [fileName] = return fileName
+parse _ = usage >> putStrLn "\nWrong kind of arguments" >> exitFailure
+
+usage :: IO ()
+usage = putStrLn "Usage: pjson filename"
+
+version :: IO ()
+version = putStrLn "Haskell pjson 0.1"
