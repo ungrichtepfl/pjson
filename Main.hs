@@ -2,10 +2,10 @@
 
 module Main where
 
-import Control.Applicative
-import Data.Char
-import System.Environment
-import System.Exit
+import           Control.Applicative (Alternative (empty, many, (<|>)))
+import           Data.Char           (isDigit, isSpace)
+import           System.Environment  (getArgs)
+import           System.Exit         (exitFailure, exitSuccess)
 
 data JsonValue
   = JsonNull
